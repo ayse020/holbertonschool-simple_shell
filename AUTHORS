@@ -1,0 +1,9 @@
+# This file lists all contributors to the simple shell project
+# Format: Name <email> - Contribution description
+
+Your Name <your.email@example.com> - Main developer and project lead
+Contributor One <contributor1@example.com> - Built-in commands implementation
+Contributor Two <contributor2@example.com> - PATH handling and error management
+Contributor Three <contributor3@example.com> - Documentation and testing
+Student Four <student4@example.com> - Memory management functions
+Peer Reviewer <reviewer@example.com> - Code review and bug fixes
