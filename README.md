@@ -1,19 +1,20 @@
-# Simple Shell Project
+SIMPLE_SHELL(1)                  User Commands                 SIMPLE_SHELL(1)
 
-## Description
-This is a simple UNIX command line interpreter (shell) implemented in C as part of the Holberton School curriculum. The shell supports basic command execution, built-in commands, and environmental variable management.
+NAME
+       hsh - simple shell
 
-## Features
-- Displays a prompt and waits for user input
-- Executes commands with arguments
-- Handles the PATH environment variable
-- Implements built-in commands (exit, env, etc.)
-- Supports command separators (;, &&, ||)
-- Handles variables replacement ($?, $$)
-- Implements comments (#)
+SYNOPSIS
+       hsh [command_file]
 
-## Installation
-```bash
-git clone https://github.com/your-username/holbertonschool-simple_shell.git
-cd holbertonschool-simple_shell
-gcc -Wall -Werror -Wextra -pedantic *.c -o hsh
+DESCRIPTION
+       hsh is a simple UNIX command interpreter.
+
+EXAMPLES
+       $ ./hsh
+       ($) ls
+       ($) exit
+
+AUTHORS
+       See AUTHORS file.
+
+HOLBERTON                        2024                        SIMPLE_SHELL(1)
