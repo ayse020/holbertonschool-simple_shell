@@ -20,6 +20,7 @@ int main(int argc, char **argv, char **env)
     ssize_t read_chars;
     pid_t child_pid;
     int status;
+    char *args[2];  /* Fixed size array for C89 compatibility */
     
     (void)argc;
     
@@ -43,6 +44,10 @@ int main(int argc, char **argv, char **env)
         if (strlen(line) == 0)
             continue;
         
+        /* Prepare arguments for execve - C89 compatible */
+        args[0] = line;
+        args[1] = NULL;
+        
         child_pid = fork();
         if (child_pid == -1)
         {
@@ -53,17 +58,16 @@ int main(int argc, char **argv, char **env)
         
         if (child_pid == 0)
         {
-            char *args[] = {line, NULL};
-            
-            if (execve(line, args, env) == -1)
+            /* Child process */
+            if (execve(args[0], args, env) == -1)
             {
                 fprintf(stderr, "%s: No such file or directory\n", argv[0]);
-                free(line);
                 exit(EXIT_FAILURE);
             }
         }
         else
         {
+            /* Parent process */
             wait(&status);
         }
     }
