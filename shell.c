@@ -38,7 +38,30 @@ void print_env(char **env)
 }
 
 /**
- * main - Simple Shell 1.0 with env built-in
+ * parse_arguments - Splits a line into arguments
+ * @line: Input line
+ * @args: Array to store arguments
+ *
+ * Return: Number of arguments
+ */
+int parse_arguments(char *line, char *args[])
+{
+    int i = 0;
+    char *token;
+    
+    token = strtok(line, " \t\n");
+    while (token != NULL && i < 63)
+    {
+        args[i] = token;
+        i++;
+        token = strtok(NULL, " \t\n");
+    }
+    args[i] = NULL;
+    return i;
+}
+
+/**
+ * main - Simple Shell 0.4 with env built-in
  * @argc: Argument count (unused)
  * @argv: Argument vector
  * @env: Environment variables
@@ -52,10 +75,13 @@ int main(int argc, char **argv, char **env)
     ssize_t read_chars;
     pid_t child_pid;
     int status;
-    char *args[2];
+    char *args[64];
     int interactive = isatty(STDIN_FILENO);
+    char *line_copy;
+    int arg_count;
     
     (void)argc;
+    (void)argv;
     
     while (1)
     {
@@ -74,36 +100,53 @@ int main(int argc, char **argv, char **env)
             return (0);
         }
         
-        if (line[read_chars - 1] == '\n')
+        /* Remove trailing newline */
+        if (read_chars > 0 && line[read_chars - 1] == '\n')
             line[read_chars - 1] = '\0';
         
+        /* Skip empty lines */
         if (strlen(line) == 0)
             continue;
         
-        /* Check for built-in commands first */
-        if (_strcmp(line, "env") == 0)
+        /* Make a copy for strtok (strtok modifies the string) */
+        line_copy = strdup(line);
+        if (line_copy == NULL)
         {
-            /* env built-in: print environment */
-            print_env(env);
+            perror("strdup");
             continue;
         }
-        else if (_strcmp(line, "exit") == 0)
+        
+        /* Parse arguments */
+        arg_count = parse_arguments(line_copy, args);
+        
+        if (arg_count == 0)
         {
-            /* exit built-in */
+            free(line_copy);
+            continue;
+        }
+        
+        /* Check for built-in commands */
+        if (_strcmp(args[0], "env") == 0)
+        {
+            print_env(env);
+            free(line_copy);
+            continue;
+        }
+        else if (_strcmp(args[0], "exit") == 0)
+        {
+            /* exit built-in - no arguments for now */
+            free(line_copy);
             free(line);
             return (0);
         }
         
-        /* Prepare arguments for execve */
-        args[0] = line;
-        args[1] = NULL;
-        
+        /* Execute external command */
         child_pid = fork();
         if (child_pid == -1)
         {
             perror("fork");
-            free(line);
-            return (1);
+            free(line_copy);
+            continue;
         }
         
         if (child_pid == 0)
@@ -111,8 +154,10 @@ int main(int argc, char **argv, char **env)
             /* Child process */
             if (execve(args[0], args, env) == -1)
             {
-                fprintf(stderr, "%s: No such file or directory\n", argv[0]);
-                exit(127);  /* Command not found exit code */
+                /* Show error from the command, not shell */
+                perror(args[0]);
+                free(line_copy);
+                exit(127);
             }
         }
         else
@@ -120,6 +165,8 @@ int main(int argc, char **argv, char **env)
             /* Parent process */
             wait(&status);
         }
+        
+        free(line_copy);
     }
     
     free(line);
