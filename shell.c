@@ -66,7 +66,7 @@ int parse_arguments(char *line, char *args[])
  * @argv: Argument vector
  * @env: Environment variables
  *
- * Return: Always 0
+ * Return: Exit status of last command
  */
 int main(int argc, char **argv, char **env)
 {
@@ -79,6 +79,7 @@ int main(int argc, char **argv, char **env)
     int interactive = isatty(STDIN_FILENO);
     char *line_copy;
     int arg_count;
+    int last_status = 0;  /* Track exit status of last command */
     
     (void)argc;
     (void)argv;
@@ -97,7 +98,7 @@ int main(int argc, char **argv, char **env)
             if (interactive)
                 write(STDOUT_FILENO, "\n", 1);
             free(line);
-            return (0);
+            return (last_status);  /* Return last exit status */
         }
         
         /* Remove trailing newline */
@@ -129,15 +130,16 @@ int main(int argc, char **argv, char **env)
         if (_strcmp(args[0], "env") == 0)
         {
             print_env(env);
+            last_status = 0;  /* env built-in succeeds */
             free(line_copy);
             continue;
         }
         else if (_strcmp(args[0], "exit") == 0)
         {
-            /* exit built-in - no arguments for now */
+            /* exit built-in - return last exit status */
             free(line_copy);
             free(line);
-            return (0);
+            return (last_status);
         }
         
         /* Execute external command */
@@ -146,6 +148,7 @@ int main(int argc, char **argv, char **env)
         {
             perror("fork");
             free(line_copy);
+            last_status = 1;  /* Fork failed */
             continue;
         }
         
@@ -157,18 +160,29 @@ int main(int argc, char **argv, char **env)
                 /* Show error from the command, not shell */
                 perror(args[0]);
                 free(line_copy);
-                exit(127);
+                exit(127);  /* Command not found */
             }
         }
         else
         {
-            /* Parent process */
-            wait(&status);
+            /* Parent process - wait for child and get exit status */
+            waitpid(child_pid, &status, 0);
+            
+            if (WIFEXITED(status))
+            {
+                /* Child exited normally */
+                last_status = WEXITSTATUS(status);
+            }
+            else if (WIFSIGNALED(status))
+            {
+                /* Child terminated by signal */
+                last_status = 128 + WTERMSIG(status);
+            }
         }
         
         free(line_copy);
     }
     
     free(line);
-    return (0);
+    return (last_status);  /* Return last exit status */
 }
