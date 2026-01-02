@@ -4,12 +4,14 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+
+extern char **environ;
 
 /**
- * _strcmp - Custom string comparison (for C89 compatibility)
+ * _strcmp - Custom string comparison
  * @s1: First string
  * @s2: Second string
- *
  * Return: 0 if equal, difference otherwise
  */
 int _strcmp(const char *s1, const char *s2)
@@ -20,6 +22,112 @@ int _strcmp(const char *s1, const char *s2)
         s2++;
     }
     return *(unsigned char *)s1 - *(unsigned char *)s2;
+}
+
+/**
+ * _strdup - Custom strdup implementation
+ * @str: String to duplicate
+ * Return: Duplicated string or NULL
+ */
+char *_strdup(const char *str)
+{
+    char *dup;
+    size_t len;
+    
+    if (str == NULL)
+        return NULL;
+    
+    len = strlen(str) + 1;
+    dup = malloc(len);
+    if (dup == NULL)
+        return NULL;
+    
+    memcpy(dup, str, len);
+    return dup;
+}
+
+/**
+ * find_command_in_path - Find command in PATH directories
+ * @command: Command to find
+ * Return: Full path if found, NULL otherwise
+ */
+char *find_command_in_path(char *command)
+{
+    struct stat st;
+    char *path, *path_copy, *dir, *full_path;
+    
+    /* Check if command is absolute path */
+    if (command[0] == '/')
+    {
+        if (stat(command, &st) == 0 && 
+            (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
+            return _strdup(command);
+        return NULL;
+    }
+    
+    /* Check if command is relative path */
+    if (command[0] == '.' && command[1] == '/')
+    {
+        if (stat(command, &st) == 0 && 
+            (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
+            return _strdup(command);
+        return NULL;
+    }
+    
+    /* Get PATH environment variable */
+    path = getenv("PATH");
+    if (path == NULL || strlen(path) == 0)
+    {
+        /* If PATH is empty, use default paths */
+        char *default_paths[] = {"/bin", "/usr/bin", NULL};
+        int i;
+        
+        for (i = 0; default_paths[i] != NULL; i++)
+        {
+            full_path = malloc(strlen(default_paths[i]) + strlen(command) + 2);
+            if (full_path == NULL)
+                continue;
+            
+            sprintf(full_path, "%s/%s", default_paths[i], command);
+            if (stat(full_path, &st) == 0 && 
+                (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
+                return full_path;
+            
+            free(full_path);
+        }
+        return NULL;
+    }
+    
+    /* Search in PATH directories */
+    path_copy = _strdup(path);
+    if (path_copy == NULL)
+        return NULL;
+    
+    dir = strtok(path_copy, ":");
+    while (dir != NULL)
+    {
+        full_path = malloc(strlen(dir) + strlen(command) + 2);
+        if (full_path == NULL)
+        {
+            free(path_copy);
+            return NULL;
+        }
+        
+        sprintf(full_path, "%s/%s", dir, command);
+        
+        if (stat(full_path, &st) == 0 && 
+            (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
+        {
+            free(path_copy);
+            return full_path;
+        }
+        
+        free(full_path);
+        dir = strtok(NULL, ":");
+    }
+    
+    free(path_copy);
+    return NULL;
 }
 
 /**
@@ -41,7 +149,6 @@ void print_env(char **env)
  * parse_arguments - Splits a line into arguments
  * @line: Input line
  * @args: Array to store arguments
- *
  * Return: Number of arguments
  */
 int parse_arguments(char *line, char *args[])
@@ -61,11 +168,10 @@ int parse_arguments(char *line, char *args[])
 }
 
 /**
- * main - Simple Shell 0.4 with env built-in
+ * main - Simple Shell 0.3 with PATH handling
  * @argc: Argument count (unused)
  * @argv: Argument vector
  * @env: Environment variables
- *
  * Return: Exit status of last command
  */
 int main(int argc, char **argv, char **env)
@@ -79,7 +185,8 @@ int main(int argc, char **argv, char **env)
     int interactive = isatty(STDIN_FILENO);
     char *line_copy;
     int arg_count;
-    int last_status = 0;  /* Track exit status of last command */
+    int last_status = 0;
+    char *command_path;
     
     (void)argc;
     (void)argv;
@@ -98,7 +205,7 @@ int main(int argc, char **argv, char **env)
             if (interactive)
                 write(STDOUT_FILENO, "\n", 1);
             free(line);
-            return (last_status);  /* Return last exit status */
+            return (last_status);
         }
         
         /* Remove trailing newline */
@@ -109,8 +216,8 @@ int main(int argc, char **argv, char **env)
         if (strlen(line) == 0)
             continue;
         
-        /* Make a copy for strtok (strtok modifies the string) */
-        line_copy = strdup(line);
+        /* Make a copy for strtok */
+        line_copy = _strdup(line);
         if (line_copy == NULL)
         {
             perror("strdup");
@@ -130,43 +237,56 @@ int main(int argc, char **argv, char **env)
         if (_strcmp(args[0], "env") == 0)
         {
             print_env(env);
-            last_status = 0;  /* env built-in succeeds */
+            last_status = 0;
             free(line_copy);
             continue;
         }
         else if (_strcmp(args[0], "exit") == 0)
         {
-            /* exit built-in - return last exit status */
             free(line_copy);
             free(line);
             return (last_status);
         }
         
-        /* Execute external command */
+        /* Find command in PATH - Simple Shell 0.3 requirement */
+        command_path = find_command_in_path(args[0]);
+        
+        if (command_path == NULL)
+        {
+            /* COMMAND NOT FOUND - DO NOT FORK! */
+            fprintf(stderr, "%s: No such file or directory\n", args[0]);
+            last_status = 127;
+            free(line_copy);
+            continue;
+        }
+        
+        /* Execute external command - only fork if command exists */
         child_pid = fork();
         if (child_pid == -1)
         {
             perror("fork");
+            free(command_path);
             free(line_copy);
-            last_status = 1;  /* Fork failed */
+            last_status = 1;
             continue;
         }
         
         if (child_pid == 0)
         {
             /* Child process */
-            if (execve(args[0], args, env) == -1)
+            if (execve(command_path, args, env) == -1)
             {
-                /* Show error from the command, not shell */
-                perror(args[0]);
+                fprintf(stderr, "%s: No such file or directory\n", args[0]);
+                free(command_path);
                 free(line_copy);
-                exit(127);  /* Command not found */
+                exit(127);
             }
         }
         else
         {
             /* Parent process - wait for child and get exit status */
             waitpid(child_pid, &status, 0);
+            free(command_path);
             
             if (WIFEXITED(status))
             {
@@ -184,5 +304,5 @@ int main(int argc, char **argv, char **env)
     }
     
     free(line);
-    return (last_status);  /* Return last exit status */
+    return (last_status);
 }
