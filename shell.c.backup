@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 extern char **environ;
 
@@ -46,74 +47,86 @@ char *_strdup(const char *str)
 }
 
 /**
- * find_command - Find command in PATH or default directories
+ * find_command_in_path - Find command in PATH directories
  * @command: Command to find
  * Return: Full path if found, NULL otherwise
  */
-char *find_command(char *command)
+char *find_command_in_path(char *command)
 {
+    struct stat st;
     char *path, *path_copy, *dir, *full_path;
-    char *default_dirs[] = {"/bin", "/usr/bin", NULL};
-    int i;
     
-    /* Check absolute path */
+    /* Check if command is absolute path */
     if (command[0] == '/')
     {
-        if (access(command, X_OK) == 0)
+        if (stat(command, &st) == 0 && 
+            (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
             return _strdup(command);
         return NULL;
     }
     
-    /* Check relative path */
+    /* Check if command is relative path */
     if (command[0] == '.' && command[1] == '/')
     {
-        if (access(command, X_OK) == 0)
+        if (stat(command, &st) == 0 && 
+            (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
             return _strdup(command);
         return NULL;
     }
     
-    /* Check PATH environment variable */
+    /* Get PATH environment variable */
     path = getenv("PATH");
-    
-    if (path != NULL && strlen(path) > 0)
+    if (path == NULL || strlen(path) == 0)
     {
-        path_copy = _strdup(path);
-        if (path_copy != NULL)
+        /* If PATH is empty, use default paths */
+        char *default_paths[] = {"/bin", "/usr/bin", NULL};
+        int i;
+        
+        for (i = 0; default_paths[i] != NULL; i++)
         {
-            dir = strtok(path_copy, ":");
-            while (dir != NULL)
-            {
-                full_path = malloc(strlen(dir) + strlen(command) + 2);
-                if (full_path != NULL)
-                {
-                    sprintf(full_path, "%s/%s", dir, command);
-                    if (access(full_path, X_OK) == 0)
-                    {
-                        free(path_copy);
-                        return full_path;
-                    }
-                    free(full_path);
-                }
-                dir = strtok(NULL, ":");
-            }
-            free(path_copy);
+            full_path = malloc(strlen(default_paths[i]) + strlen(command) + 2);
+            if (full_path == NULL)
+                continue;
+            
+            sprintf(full_path, "%s/%s", default_paths[i], command);
+            if (stat(full_path, &st) == 0 && 
+                (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
+                return full_path;
+            
+            free(full_path);
         }
+        return NULL;
     }
     
-    /* Always check default directories */
-    for (i = 0; default_dirs[i] != NULL; i++)
+    /* Search in PATH directories */
+    path_copy = _strdup(path);
+    if (path_copy == NULL)
+        return NULL;
+    
+    dir = strtok(path_copy, ":");
+    while (dir != NULL)
     {
-        full_path = malloc(strlen(default_dirs[i]) + strlen(command) + 2);
+        full_path = malloc(strlen(dir) + strlen(command) + 2);
         if (full_path == NULL)
-            continue;
+        {
+            free(path_copy);
+            return NULL;
+        }
         
-        sprintf(full_path, "%s/%s", default_dirs[i], command);
-        if (access(full_path, X_OK) == 0)
+        sprintf(full_path, "%s/%s", dir, command);
+        
+        if (stat(full_path, &st) == 0 && 
+            (st.st_mode & S_IXUSR || st.st_mode & S_IXGRP || st.st_mode & S_IXOTH))
+        {
+            free(path_copy);
             return full_path;
+        }
         
         free(full_path);
+        dir = strtok(NULL, ":");
     }
     
+    free(path_copy);
     return NULL;
 }
 
@@ -207,6 +220,7 @@ int main(int argc, char **argv, char **env)
         line_copy = _strdup(line);
         if (line_copy == NULL)
         {
+            perror("strdup");
             continue;
         }
         
@@ -235,7 +249,7 @@ int main(int argc, char **argv, char **env)
         }
         
         /* Find command in PATH - Simple Shell 0.3 requirement */
-        command_path = find_command(args[0]);
+        command_path = find_command_in_path(args[0]);
         
         if (command_path == NULL)
         {
@@ -267,7 +281,6 @@ int main(int argc, char **argv, char **env)
                 free(line_copy);
                 exit(127);
             }
-            exit(0);
         }
         else
         {
@@ -277,10 +290,12 @@ int main(int argc, char **argv, char **env)
             
             if (WIFEXITED(status))
             {
+                /* Child exited normally */
                 last_status = WEXITSTATUS(status);
             }
             else if (WIFSIGNALED(status))
             {
+                /* Child terminated by signal */
                 last_status = 128 + WTERMSIG(status);
             }
         }
